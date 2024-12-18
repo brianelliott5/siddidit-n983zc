@@ -1,0 +1,165 @@
+---
+# Nginx Installation and Configuration Tasks
+# Version: 1.0
+# Last Updated: 2024-01-22
+
+# Pre-installation checks
+- name: Check system requirements
+  ansible.builtin.assert:
+    that:
+      - ansible_memtotal_mb >= 1024  # Minimum 1GB RAM
+      - ansible_processor_vcpus >= 1  # Minimum 1 vCPU
+    fail_msg: "System does not meet minimum requirements"
+
+- name: Install required system packages
+  ansible.builtin.package:
+    name: "{{ item }}"
+    state: present
+  loop:
+    - ssl-cert
+    - ca-certificates
+    - curl  # For health checks
+  when: ansible_os_family in ['Debian', 'RedHat']
+
+# Nginx Installation
+- name: Install Nginx (Debian/Ubuntu)
+  ansible.builtin.apt:
+    name: nginx
+    state: present
+    update_cache: yes
+  when: ansible_os_family == 'Debian'
+
+- name: Install Nginx (RHEL/CentOS)
+  ansible.builtin.yum:
+    name: nginx
+    state: present
+    update_cache: yes
+  when: ansible_os_family == 'RedHat'
+
+# Directory Setup
+- name: Create required directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    mode: '0755'
+    owner: "{{ nginx_user | default('nginx') }}"
+    group: "{{ nginx_group | default('nginx') }}"
+  loop:
+    - /etc/nginx/conf.d
+    - /var/log/nginx
+    - /var/www/html
+
+# Configuration Deployment
+- name: Deploy main Nginx configuration
+  ansible.builtin.template:
+    src: nginx.conf.j2
+    dest: /etc/nginx/nginx.conf
+    owner: root
+    group: root
+    mode: '0644'
+    validate: 'nginx -t -c %s'
+    backup: yes
+  notify: validate_and_restart_nginx
+
+- name: Deploy security headers configuration
+  ansible.builtin.template:
+    src: security-headers.conf.j2
+    dest: /etc/nginx/conf.d/security-headers.conf
+    owner: root
+    group: root
+    mode: '0644'
+    validate: 'nginx -t -c /etc/nginx/nginx.conf'
+  notify: validate_and_restart_nginx
+
+# Security Configuration
+- name: Set restrictive file permissions
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    mode: "{{ item.mode }}"
+    owner: root
+    group: root
+  loop:
+    - { path: '/etc/nginx/nginx.conf', mode: '0644' }
+    - { path: '/etc/nginx/conf.d', mode: '0755' }
+
+- name: Disable default site configuration
+  ansible.builtin.file:
+    path: /etc/nginx/sites-enabled/default
+    state: absent
+  when: ansible_os_family == 'Debian'
+  notify: validate_and_restart_nginx
+
+# Performance Optimization
+- name: Configure worker processes
+  ansible.builtin.lineinfile:
+    path: /etc/nginx/nginx.conf
+    regexp: '^worker_processes'
+    line: "worker_processes {{ nginx_worker_processes | default('auto') }};"
+    validate: 'nginx -t -c %s'
+  notify: validate_and_restart_nginx
+
+# Monitoring Setup
+- name: Configure logging
+  ansible.builtin.template:
+    src: logging.conf.j2
+    dest: /etc/nginx/conf.d/logging.conf
+    owner: root
+    group: root
+    mode: '0644'
+    validate: 'nginx -t -c /etc/nginx/nginx.conf'
+  notify: validate_and_restart_nginx
+
+- name: Setup log rotation
+  ansible.builtin.copy:
+    content: |
+      /var/log/nginx/*.log {
+          daily
+          missingok
+          rotate 14
+          compress
+          delaycompress
+          notifempty
+          create 0640 nginx adm
+          sharedscripts
+          postrotate
+              [ -f /var/run/nginx.pid ] && kill -USR1 `cat /var/run/nginx.pid`
+          endscript
+      }
+    dest: /etc/logrotate.d/nginx
+    owner: root
+    group: root
+    mode: '0644'
+
+# Service Management
+- name: Enable and start Nginx service
+  ansible.builtin.service:
+    name: nginx
+    state: started
+    enabled: yes
+
+# Post-installation Validation
+- name: Verify Nginx configuration
+  ansible.builtin.command: nginx -t
+  changed_when: false
+  check_mode: no
+
+- name: Check Nginx service status
+  ansible.builtin.service_facts:
+  register: service_state
+  failed_when: >
+    'nginx.service' not in service_state.ansible_facts.services or
+    service_state.ansible_facts.services['nginx.service'].state != 'running'
+
+# Health Check
+- name: Wait for Nginx to be ready
+  ansible.builtin.uri:
+    url: http://localhost/
+    return_content: yes
+    validate_certs: no
+  register: result
+  until: result.status == 200
+  retries: 5
+  delay: 5
+
+# Handlers notification
+  notify: validate_and_restart_nginx
