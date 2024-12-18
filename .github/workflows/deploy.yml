@@ -1,0 +1,201 @@
+# GitHub Actions workflow for Hello World web application deployment
+# Version: 1.0
+# Last Updated: 2024-01-22
+
+name: Deploy Application
+
+# Workflow triggers
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Deployment environment'
+        required: true
+        type: choice
+        options:
+          - staging
+          - production
+        default: 'staging'
+  push:
+    branches:
+      - main
+    paths:
+      - 'src/web/**'
+
+# Environment variables
+env:
+  DOCKER_REGISTRY: ${{ secrets.DOCKER_REGISTRY }}
+  AWS_REGION: ${{ secrets.AWS_REGION }}
+  DEPLOYMENT_TIMEOUT: '3600'
+  CLOUDWATCH_GROUP: '/hello-world'
+
+# Permission specifications
+permissions:
+  contents: read
+  packages: write
+  id-token: write
+  deployments: write
+
+jobs:
+  # Validation job
+  validate:
+    name: Validate Content
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Validate HTML
+        uses: w3c/html-validator@v2
+        with:
+          file: src/web/src/index.html
+          validate_css: false
+          validate_js: false
+          fail_on_warnings: true
+
+      - name: Check security headers
+        run: |
+          grep -q "Content-Security-Policy" src/web/config/security-headers.conf
+          grep -q "X-Frame-Options" src/web/config/security-headers.conf
+          grep -q "X-Content-Type-Options" src/web/config/security-headers.conf
+          grep -q "Strict-Transport-Security" src/web/config/security-headers.conf
+          grep -q "Referrer-Policy" src/web/config/security-headers.conf
+
+  # Build and test job
+  build:
+    name: Build and Test
+    needs: validate
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to Docker Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ secrets.DOCKER_REGISTRY }}
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: src/web
+          push: true
+          tags: |
+            ${{ env.DOCKER_REGISTRY }}/hello-world:${{ github.sha }}
+            ${{ env.DOCKER_REGISTRY }}/hello-world:latest
+          cache-from: type=registry,ref=${{ env.DOCKER_REGISTRY }}/hello-world:buildcache
+          cache-to: type=registry,ref=${{ env.DOCKER_REGISTRY }}/hello-world:buildcache,mode=max
+
+  # Deployment job
+  deploy:
+    name: Deploy Application
+    needs: build
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment || 'staging' }}
+    timeout-minutes: 60
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Deploy application
+        run: |
+          chmod +x ./src/web/scripts/deploy.sh
+          ./src/web/scripts/deploy.sh
+        env:
+          ENVIRONMENT: ${{ inputs.environment || 'staging' }}
+          DOCKER_REGISTRY: ${{ env.DOCKER_REGISTRY }}
+          NGINX_HOST: ${{ secrets.NGINX_HOST }}
+          LOG_LEVEL: INFO
+
+      - name: Health check
+        run: |
+          max_retries=3
+          retry_interval=10
+          attempt=1
+          
+          while [ $attempt -le $max_retries ]; do
+            if curl -sf -o /dev/null http://${{ secrets.NGINX_HOST }}; then
+              echo "Health check passed"
+              exit 0
+            fi
+            echo "Health check attempt $attempt failed, retrying in $retry_interval seconds..."
+            sleep $retry_interval
+            attempt=$((attempt + 1))
+          done
+          echo "Health check failed after $max_retries attempts"
+          exit 1
+        timeout-minutes: 5
+
+  # Monitoring setup job
+  monitor:
+    name: Setup Monitoring
+    needs: deploy
+    runs-on: ubuntu-latest
+    if: ${{ inputs.environment == 'production' }}
+    
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Configure CloudWatch
+        run: |
+          # Create log group if it doesn't exist
+          aws logs create-log-group --log-group-name "${CLOUDWATCH_GROUP}/${ENVIRONMENT}" || true
+          
+          # Set retention policy
+          aws logs put-retention-policy \
+            --log-group-name "${CLOUDWATCH_GROUP}/${ENVIRONMENT}" \
+            --retention-in-days 30
+          
+          # Create metric filters
+          aws logs put-metric-filter \
+            --log-group-name "${CLOUDWATCH_GROUP}/${ENVIRONMENT}" \
+            --filter-name "HTTPErrors" \
+            --filter-pattern "[timestamp, requestid, HTTP, status_code=4*, size, client]" \
+            --metric-transformations \
+              metricName=HTTPErrors,metricNamespace=HelloWorld,metricValue=1
+
+      - name: Create CloudWatch alarms
+        run: |
+          aws cloudwatch put-metric-alarm \
+            --alarm-name "hello-world-health-${ENVIRONMENT}" \
+            --metric-name "HealthCheckStatus" \
+            --namespace "HelloWorld" \
+            --statistic "Minimum" \
+            --period 300 \
+            --evaluation-periods 2 \
+            --threshold 1 \
+            --comparison-operator "LessThanThreshold" \
+            --alarm-actions "${{ secrets.ALARM_SNS_TOPIC }}"
+
+  # Notification job
+  notify:
+    name: Send Notifications
+    needs: [deploy, monitor]
+    runs-on: ubuntu-latest
+    if: always()
+    
+    steps:
+      - name: Notify deployment status
+        uses: 8398a7/action-slack@v3
+        with:
+          status: ${{ job.status }}
+          fields: repo,message,commit,author,action,eventName,ref,workflow,job,took
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+        if: always()
