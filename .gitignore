@@ -1,0 +1,109 @@
+# Dependencies
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+package-lock.json
+yarn.lock
+
+# Build and Output
+dist/
+build/
+coverage/
+*.min.js
+*.min.css
+.cache/
+
+# Environment and Configuration
+.env
+.env.local
+.env.development
+.env.test
+.env.production
+.env.*
+config.local.js
+
+# System Files
+.DS_Store
+Thumbs.db
+desktop.ini
+*.log
+*.tmp
+*.temp
+
+# IDE and Editor
+.idea/
+.vscode/
+*.swp
+*.swo
+*.swn
+*.bak
+.project
+.settings/
+*.sublime-workspace
+*.sublime-project
+
+# Infrastructure and Deployment
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+.terraformrc
+terraform.rc
+.vagrant/
+*.box
+
+# Security and Credentials
+*.pem
+*.key
+*.cert
+*.crt
+*.csr
+*.pfx
+*.p12
+id_rsa
+id_ecdsa
+id_ed25519
+*.keystore
+*.jks
+.htpasswd
+.htaccess
+*.gpg
+*.asc
+
+# Testing and Documentation
+/coverage/
+.nyc_output/
+/docs/_site/
+/docs/.jekyll-cache/
+
+# Temporary and Cache
+*.cache
+.sass-cache/
+*.log
+logs/
+tmp/
+temp/
+
+# OS Generated
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+$RECYCLE.BIN/
+Icon?
+
+# Application Specific
+dist/
+coverage/
+.terraform/
+node_modules/
+
+# Misc
+*.bak
+*.swp
+*.orig
+.DS_Store?
+*.pid
+*.seed
+*.pid.lock
