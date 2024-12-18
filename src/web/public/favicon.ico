@@ -1,0 +1,22 @@
+Format: ICO container format
+Required sizes: 16x16 and 32x32 pixels (multi-size ICO file)
+Color depth: 32-bit (RGBA)
+Maximum file size: < 5KB
+Design: Simple "HW" text or world icon in black on white background
+File permissions: 644
+Owner: www-data:www-data
+
+Recommended creation steps:
+1. Create a 32x32 pixel base image with transparent background
+2. Design a simple "HW" monogram or world icon in black
+3. Create both 32x32 and 16x16 versions
+4. Export as ICO file containing both sizes
+5. Verify file size is under 5KB
+6. Set correct file permissions and ownership
+
+The favicon should be served with these HTTP headers:
+Content-Type: image/x-icon
+Cache-Control: public, max-age=3600
+ETag: [file-hash]
+
+Note: Since this is a binary file, the actual content cannot be represented in text format. Please use an image editor that supports ICO format creation like GIMP, Adobe Photoshop, or online favicon generators to create the actual file.
