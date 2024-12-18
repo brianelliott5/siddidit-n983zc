@@ -1,0 +1,16 @@
+* @project-maintainers
+
+# Web application source code including HTML files
+src/web/** @web-team
+
+# Security-related configurations requiring security team review
+src/web/config/security-headers.conf @security-team
+infrastructure/terraform/modules/web/security.tf @security-team
+
+# CI/CD workflows and automation scripts
+.github/workflows/* @devops-team @ci-team
+src/web/scripts/* @devops-team @ci-team
+
+# Documentation files including markdown and technical docs
+**/*.md @docs-team
+src/web/docs/** @docs-team
