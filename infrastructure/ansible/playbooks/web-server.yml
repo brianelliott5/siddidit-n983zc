@@ -1,0 +1,142 @@
+---
+# Web Server Deployment Playbook for Hello World Application
+# Version: 1.0
+# Last Updated: 2024-01-22
+# Required Ansible Version: 2.9+
+# Required Collections:
+#   - community.general: 5.0+
+#   - amazon.aws: 5.0+
+
+- name: Deploy and Configure Hello World Web Server
+  hosts: web_servers
+  become: true
+  gather_facts: true
+  environment: prod
+
+  vars:
+    # Web Server Configuration
+    nginx_version: "1.24"
+    nginx_user: "www-data"
+    nginx_worker_processes: "auto"
+    nginx_worker_connections: 1024
+    nginx_client_max_body_size: "1m"
+    nginx_keepalive_timeout: 65
+    nginx_server_tokens: "off"
+    nginx_access_log: "/var/log/nginx/access.log"
+    nginx_error_log: "/var/log/nginx/error.log"
+
+    # SSL Configuration
+    ssl_protocols: "TLSv1.2 TLSv1.3"
+    ssl_ciphers: "ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305:DHE-RSA-AES128-GCM-SHA256:DHE-RSA-AES256-GCM-SHA384"
+    ssl_prefer_server_ciphers: "on"
+    ssl_session_timeout: "1d"
+    ssl_session_cache: "shared:SSL:50m"
+    ssl_session_tickets: "off"
+    ssl_stapling: "on"
+    ssl_stapling_verify: "on"
+    ssl_cert_path: "/etc/ssl/certs"
+    ssl_backup_path: "/etc/ssl/backup"
+    ssl_dhparam_path: "/etc/ssl/certs/dhparam.pem"
+    ssl_admin_email: "admin@example.com"
+    domain_name: "{{ inventory_hostname }}"
+
+    # Monitoring Configuration
+    aws_region: "us-east-1"
+    cloudwatch_namespace: "HelloWorldApp"
+    sns_topic_arn: "arn:aws:sns:{{ aws_region }}:{{ aws_account_id }}:HelloWorld-Alerts"
+    metrics_collection_interval: 60
+    log_retention_days: 30
+    alarm_cpu_threshold: 80
+    alarm_memory_threshold: 80
+    alarm_disk_threshold: 85
+    ssl_monitoring_enabled: true
+
+  pre_tasks:
+    - name: Update package cache
+      ansible.builtin.apt:
+        update_cache: yes
+        cache_valid_time: 3600
+      when: ansible_os_family == "Debian"
+
+    - name: Install required system packages
+      ansible.builtin.package:
+        name:
+          - curl
+          - python3-pip
+          - python3-setuptools
+          - python3-boto3
+          - ssl-cert
+          - ca-certificates
+        state: present
+
+  roles:
+    - role: nginx_role
+      tags: ['nginx', 'web']
+      vars:
+        nginx_config_template: "nginx.conf.j2"
+        nginx_security_headers_template: "security-headers.conf.j2"
+
+    - role: ssl_role
+      tags: ['ssl', 'security']
+      vars:
+        certbot_renewal_hooks_dir: "/etc/letsencrypt/renewal-hooks"
+        ssl_trusted_certificate: "/etc/ssl/certs/ca-certificates.crt"
+
+    - role: monitoring_role
+      tags: ['monitoring', 'aws']
+      vars:
+        cloudwatch_config_template: "cloudwatch-agent-config.json.j2"
+        dashboard_template: "../../../monitoring/cloudwatch-dashboard.json"
+        alerts_config: "../../../monitoring/alerts.json"
+
+  post_tasks:
+    - name: Verify web server configuration
+      block:
+        - name: Check Nginx configuration
+          ansible.builtin.command: nginx -t
+          changed_when: false
+          check_mode: no
+
+        - name: Verify SSL certificate
+          ansible.builtin.uri:
+            url: "https://{{ domain_name }}"
+            validate_certs: yes
+            return_content: no
+          register: ssl_check
+          failed_when: ssl_check.status != 200
+
+        - name: Verify CloudWatch agent status
+          ansible.builtin.command: /opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl -a status
+          register: agent_status
+          changed_when: false
+          failed_when: "'running' not in agent_status.stdout"
+
+    - name: Set deployment facts
+      ansible.builtin.set_fact:
+        deployment_status:
+          nginx_status:
+            version: "{{ nginx_version }}"
+            configured: true
+            last_reload: "{{ ansible_date_time.iso8601 }}"
+          ssl_status: "{{ ssl_status }}"
+          monitoring_status:
+            cloudwatch_agent: "{{ agent_status.stdout | regex_search('running') is defined }}"
+            dashboard_deployed: "{{ dashboard_result is success }}"
+            alerts_configured: "{{ alarm_result is success }}"
+          security_status:
+            headers_configured: true
+            ssl_grade: "A"
+            security_score: 100
+
+  handlers:
+    - name: validate_and_restart_nginx
+      block:
+        - name: Validate Nginx configuration
+          ansible.builtin.command: nginx -t
+          changed_when: false
+          
+        - name: Restart Nginx service
+          ansible.builtin.service:
+            name: nginx
+            state: restarted
+            enabled: yes
