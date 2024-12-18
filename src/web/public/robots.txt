@@ -1,0 +1,24 @@
+# robots.txt for Hello World Website
+# Last Modified: 2024-01-22
+# Purpose: Provide web crawler instructions and access control rules
+
+# Default rules for all crawlers
+User-agent: *
+# Allow access to public content
+Allow: /
+# Allow access to main page
+Allow: /index.html
+# Set crawl delay to prevent server overload
+Crawl-delay: 10
+
+# Security: Protect sensitive directories
+Disallow: /config/
+Disallow: /.git/
+Disallow: /scripts/
+Disallow: /tests/
+
+# Sitemap not required for single page website
+# Host directive not required for development environment
+
+# Request rate limits are enforced server-side
+# Additional security measures implemented via server configuration
