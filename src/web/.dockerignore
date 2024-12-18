@@ -1,0 +1,77 @@
+.git
+.gitignore
+.gitattributes
+
+# Node.js dependencies
+node_modules
+npm-debug.log
+yarn-debug.log
+yarn-error.log
+
+# Development configurations
+.eslintrc
+.eslintignore
+.prettierrc
+.prettierignore
+tsconfig.json
+jest.config.ts
+
+# Environment and secrets
+.env
+.env.*
+*.env
+
+# Documentation
+*.md
+docs/
+README*
+
+# Test files
+tests/
+__tests__/
+*.test.*
+*.spec.*
+
+# Build and deployment
+scripts/
+*.sh
+*.bat
+Dockerfile*
+docker-compose*
+
+# Logs and debugging
+*.log
+logs/
+debug/
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+
+# Package files
+package.json
+package-lock.json
+yarn.lock
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+
+# Build artifacts
+dist/
+build/
+coverage/
+
+# Cache directories
+.cache/
+.npm/
+.yarn/
+
+# Other unnecessary files
+*.zip
+*.tar.gz
+*.tgz
