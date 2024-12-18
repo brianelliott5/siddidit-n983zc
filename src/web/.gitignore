@@ -1,0 +1,69 @@
+# Dependencies
+node_modules/
+package-lock.json
+
+# Build outputs
+dist/
+build/
+*.min.js
+*.min.css
+
+# Testing and coverage
+coverage/
+.nyc_output/
+test-results/
+junit.xml
+
+# Environment and security
+.env
+.env.*
+*.pem
+*.key
+*.crt
+*.cer
+*.p12
+*.pfx
+
+# Logs
+*.log
+logs/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# System files
+.DS_Store
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# Editor files
+.idea/
+.vscode/
+*.swp
+*.swo
+*.swn
+*.bak
+*.sublime-workspace
+*.sublime-project
+.project
+.settings/
+.classpath
+*.iml
+*.iws
+*.ipr
+
+# Temporary files
+*.tmp
+*.temp
+.cache/
+.temp/
+
+# Misc
+.sass-cache/
+.eslintcache
+.stylelintcache
+.prettierignore
+*.tgz
+.history/
