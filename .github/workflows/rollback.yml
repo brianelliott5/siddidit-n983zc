@@ -1,0 +1,155 @@
+# GitHub Actions workflow for automated rollback operations
+# Version: 1.0
+name: Rollback Application
+
+# Workflow triggers
+on:
+  # Manual trigger with environment and version inputs
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Target environment for rollback operation'
+        required: true
+        type: choice
+        options:
+          - staging
+          - production
+      version:
+        description: 'Previous stable version to rollback to'
+        required: true
+        type: string
+  
+  # Callable workflow trigger
+  workflow_call:
+    inputs:
+      environment:
+        description: 'Target environment for rollback operation'
+        required: true
+        type: string
+      version:
+        description: 'Previous stable version to rollback to'
+        required: true
+        type: string
+
+# Environment variables
+env:
+  DOCKER_REGISTRY: ${{ secrets.DOCKER_REGISTRY }}
+  AWS_REGION: ${{ secrets.AWS_REGION }}
+  NGINX_HOST: ${{ secrets.NGINX_HOST }}
+
+# Permission specifications
+permissions:
+  contents: read
+  packages: write
+  id-token: write
+
+# Jobs definition
+jobs:
+  rollback:
+    name: Execute Rollback Operation
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    
+    # Timeout to prevent hung operations
+    timeout-minutes: 60
+    
+    steps:
+      # Checkout repository with sparse checkout for efficiency
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          sparse-checkout: true
+          sparse-checkout-cone-mode: false
+          sparse-checkout-patterns: |
+            src/web/scripts/
+            src/web/docker-compose.yml
+            infrastructure/docker/docker-compose.prod.yml
+      
+      # Setup Docker Buildx for efficient container operations
+      - name: Setup Docker Buildx
+        uses: docker/setup-buildx-action@v3
+        with:
+          install: true
+      
+      # Login to Docker registry
+      - name: Login to Docker Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ secrets.DOCKER_REGISTRY }}
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+      
+      # Configure AWS credentials for CloudWatch integration
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ secrets.AWS_REGION }}
+      
+      # Validate rollback version
+      - name: Validate Rollback Version
+        run: |
+          if ! ./src/web/scripts/rollback.sh validate_version "${{ inputs.version }}"; then
+            echo "Invalid rollback version specified"
+            exit 1
+          fi
+      
+      # Execute rollback operation
+      - name: Execute Rollback
+        run: |
+          chmod +x ./src/web/scripts/rollback.sh
+          ./src/web/scripts/rollback.sh
+        env:
+          ENVIRONMENT: ${{ inputs.environment }}
+          PREVIOUS_VERSION: ${{ inputs.version }}
+          DOCKER_REGISTRY: ${{ secrets.DOCKER_REGISTRY }}
+          NGINX_HOST: ${{ secrets.NGINX_HOST }}
+          LOG_LEVEL: INFO
+      
+      # Perform health checks
+      - name: Health Check
+        run: |
+          # Initial delay to allow service startup
+          sleep 10
+          
+          # Perform health check with retries
+          for i in {1..3}; do
+            if curl --fail --retry 3 --retry-delay 5 "http://${NGINX_HOST}"; then
+              echo "Health check passed"
+              exit 0
+            fi
+            echo "Health check attempt $i failed, retrying..."
+            sleep 30
+          done
+          echo "Health check failed after all retries"
+          exit 1
+        timeout-minutes: 5
+      
+      # Update monitoring and metrics
+      - name: Update Monitoring
+        if: always()
+        run: |
+          # Send rollback status to CloudWatch
+          aws cloudwatch put-metric-data \
+            --namespace "HelloWorld/Rollback" \
+            --metric-name "RollbackStatus" \
+            --dimensions Environment=${{ inputs.environment }} \
+            --value ${{ job.status == 'success' && 1 || 0 }} \
+            --timestamp $(date -u +"%Y-%m-%dT%H:%M:%SZ")
+      
+      # Notify on failure
+      - name: Notify on Failure
+        if: failure()
+        run: |
+          # Log failure details
+          echo "Rollback failed for environment: ${{ inputs.environment }}"
+          echo "Target version: ${{ inputs.version }}"
+          echo "Job status: ${{ job.status }}"
+          
+          # Send failure metric to CloudWatch
+          aws cloudwatch put-metric-data \
+            --namespace "HelloWorld/Rollback" \
+            --metric-name "RollbackFailure" \
+            --dimensions Environment=${{ inputs.environment }} \
+            --value 1 \
+            --timestamp $(date -u +"%Y-%m-%dT%H:%M:%SZ")
