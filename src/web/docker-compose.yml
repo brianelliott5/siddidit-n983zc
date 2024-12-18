@@ -1,0 +1,94 @@
+# Docker Compose configuration for Hello World static web application
+# Version: 3.8 (as specified in requirements)
+version: '3.8'
+
+services:
+  # Main web server service configuration
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: hello-world-web
+    # Map host port 80 to container port 80
+    ports:
+      - "80:80"
+    # Mount configuration and content files as read-only volumes
+    volumes:
+      - type: bind
+        source: ./src/index.html
+        target: /usr/share/nginx/html/index.html
+        read_only: true
+      - type: bind
+        source: ./config/nginx/nginx.conf
+        target: /etc/nginx/nginx.conf
+        read_only: true
+      - type: bind
+        source: ./config/security-headers.conf
+        target: /etc/nginx/conf.d/security-headers.conf
+        read_only: true
+      - type: volume
+        source: web_logs
+        target: /var/log/nginx
+    # Resource limits as per technical specification
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 1G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+    # Health check configuration
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost/", "||", "exit", "1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+    # Restart policy
+    restart: unless-stopped
+    # Logging configuration
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    # Network configuration
+    networks:
+      - web_network
+    # Security settings
+    security_opt:
+      - no-new-privileges:true
+    # Read-only root filesystem for security
+    read_only: true
+    # Required tmpfs mounts for nginx
+    tmpfs:
+      - /var/run:size=1M
+      - /var/cache/nginx:size=10M
+
+# Network definition
+networks:
+  web_network:
+    driver: bridge
+    name: hello-world-network
+    # Enable IPv6
+    enable_ipv6: true
+    # Network configuration
+    driver_opts:
+      com.docker.network.bridge.name: hello-world-br
+    # Network IPAM configuration
+    ipam:
+      driver: default
+      config:
+        - subnet: 172.28.0.0/16
+
+# Volume definition for logs
+volumes:
+  web_logs:
+    driver: local
+    name: hello-world-logs
+    # Volume driver options
+    driver_opts:
+      type: none
+      device: /var/log/hello-world
+      o: bind
