@@ -1,0 +1,196 @@
+---
+# Ansible tasks for setting up CloudWatch monitoring
+# Version: 1.0.0
+# boto3: ^1.26.0
+# amazon.aws modules: ^5.0.0
+
+- name: Validate AWS credentials and prerequisites
+  block:
+    - name: Verify AWS credentials are configured
+      ansible.builtin.command: aws sts get-caller-identity
+      changed_when: false
+      register: aws_identity
+      failed_when: aws_identity.rc != 0
+
+    - name: Validate SNS topic existence
+      amazon.aws.sns_topic_info:
+        name: "{{ sns_topic_arn.split(':')[-1] }}"
+        region: "{{ aws_region }}"
+      register: sns_topic
+      failed_when: not sns_topic.topic_arn
+
+    - name: Verify required Python packages
+      ansible.builtin.pip:
+        name: boto3>=1.26.0
+        state: present
+        extra_args: --user
+      register: pip_install
+      changed_when: pip_install.changed
+
+- name: Install and configure CloudWatch agent
+  block:
+    - name: Download CloudWatch agent
+      ansible.builtin.get_url:
+        url: "https://s3.amazonaws.com/amazoncloudwatch-agent/linux/amd64/latest/amazon-cloudwatch-agent.rpm"
+        dest: "/tmp/amazon-cloudwatch-agent.rpm"
+        mode: '0644'
+        validate_certs: true
+      register: agent_download
+
+    - name: Install CloudWatch agent package
+      ansible.builtin.yum:
+        name: /tmp/amazon-cloudwatch-agent.rpm
+        state: present
+      register: agent_install
+      notify: restart_cloudwatch_agent
+
+    - name: Configure CloudWatch agent
+      ansible.builtin.template:
+        src: cloudwatch-agent-config.json.j2
+        dest: /opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json
+        mode: '0644'
+        owner: root
+        group: root
+      notify: restart_cloudwatch_agent
+
+- name: Setup CloudWatch dashboard
+  amazon.aws.cloudwatch_dashboard:
+    dashboard_name: "HelloWorld-{{ environment }}"
+    state: present
+    region: "{{ aws_region }}"
+    dashboard_body: "{{ lookup('file', '../../../monitoring/cloudwatch-dashboard.json') | from_json | combine({'widgets': widgets}) | to_json }}"
+  vars:
+    widgets: "{{ lookup('file', '../../../monitoring/cloudwatch-dashboard.json') | from_json | json_query('widgets') }}"
+  register: dashboard_result
+
+- name: Configure CloudWatch alarms
+  amazon.aws.cloudwatch_metric_alarm:
+    state: present
+    region: "{{ aws_region }}"
+    name: "{{ item.name }}-{{ environment }}"
+    metric_name: "{{ item.metric_name }}"
+    namespace: "{{ item.namespace }}"
+    statistic: "{{ item.statistic }}"
+    comparison: "{{ item.comparison_operator }}"
+    threshold: "{{ item.threshold }}"
+    period: "{{ item.period }}"
+    evaluation_periods: "{{ item.evaluation_periods }}"
+    unit: "{{ item.unit }}"
+    description: "{{ item.alarm_description }}"
+    dimensions: "{{ item.dimensions }}"
+    alarm_actions: "{{ item.alarm_actions }}"
+    ok_actions: "{{ item.ok_actions }}"
+    insufficient_data_actions: "{{ item.insufficient_data_actions }}"
+    treat_missing_data: "{{ item.treat_missing_data }}"
+  loop: "{{ lookup('file', '../../../monitoring/alerts.json') | from_json | json_query('alarms[*]') }}"
+  register: alarm_result
+
+- name: Configure metric collection
+  block:
+    - name: Setup TTFB metric collection
+      amazon.aws.cloudwatch_metric_alarm:
+        name: "TTFB-Metric-{{ environment }}"
+        metric_name: "TTFB"
+        namespace: "HelloWorldApp"
+        statistic: "Average"
+        period: 300
+        evaluation_periods: 2
+        threshold: 100
+        comparison: "GreaterThanThreshold"
+        unit: "Milliseconds"
+        dimensions:
+          Environment: "{{ environment }}"
+        alarm_actions: ["{{ sns_topic_arn }}"]
+
+    - name: Setup Page Load Time metric collection
+      amazon.aws.cloudwatch_metric_alarm:
+        name: "PageLoadTime-Metric-{{ environment }}"
+        metric_name: "PageLoadTime"
+        namespace: "HelloWorldApp"
+        statistic: "Average"
+        period: 300
+        evaluation_periods: 2
+        threshold: 1000
+        comparison: "GreaterThanThreshold"
+        unit: "Milliseconds"
+        dimensions:
+          Environment: "{{ environment }}"
+        alarm_actions: ["{{ sns_topic_arn }}"]
+
+    - name: Setup Cache Hit Ratio metric collection
+      amazon.aws.cloudwatch_metric_alarm:
+        name: "CacheHitRatio-Metric-{{ environment }}"
+        metric_name: "CacheHitRatio"
+        namespace: "HelloWorldApp"
+        statistic: "Average"
+        period: 300
+        evaluation_periods: 3
+        threshold: 90
+        comparison: "LessThanThreshold"
+        unit: "Percent"
+        dimensions:
+          Environment: "{{ environment }}"
+        alarm_actions: ["{{ sns_topic_arn }}"]
+
+    - name: Setup Error Rate metric collection
+      amazon.aws.cloudwatch_metric_alarm:
+        name: "ErrorRate-Metric-{{ environment }}"
+        metric_name: "ErrorRate"
+        namespace: "HelloWorldApp"
+        statistic: "Average"
+        period: 300
+        evaluation_periods: 2
+        threshold: 0.1
+        comparison: "GreaterThanThreshold"
+        unit: "Percent"
+        dimensions:
+          Environment: "{{ environment }}"
+        alarm_actions: ["{{ sns_topic_arn }}"]
+
+- name: Validate monitoring setup
+  block:
+    - name: Verify CloudWatch agent status
+      ansible.builtin.command: /opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl -a status
+      register: agent_status
+      changed_when: false
+      failed_when: "'running' not in agent_status.stdout"
+
+    - name: Verify metric collection
+      amazon.aws.cloudwatch_info:
+        region: "{{ aws_region }}"
+        namespace: "HelloWorldApp"
+      register: metrics_info
+      failed_when: metrics_info.metrics | length == 0
+
+    - name: Verify dashboard creation
+      amazon.aws.cloudwatch_dashboard_info:
+        region: "{{ aws_region }}"
+        dashboard_name: "HelloWorld-{{ environment }}"
+      register: dashboard_info
+      failed_when: not dashboard_info.dashboard
+
+handlers:
+  - name: restart_cloudwatch_agent
+    block:
+      - name: Stop CloudWatch agent
+        ansible.builtin.service:
+          name: amazon-cloudwatch-agent
+          state: stopped
+        
+      - name: Clear agent cache
+        ansible.builtin.file:
+          path: /opt/aws/amazon-cloudwatch-agent/var/
+          state: absent
+        
+      - name: Start CloudWatch agent
+        ansible.builtin.service:
+          name: amazon-cloudwatch-agent
+          state: started
+          enabled: true
+        
+      - name: Verify agent operation
+        ansible.builtin.command: /opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl -a status
+        register: agent_verify
+        retries: 3
+        delay: 10
+        until: "'running' in agent_verify.stdout"
