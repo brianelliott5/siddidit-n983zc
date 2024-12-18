@@ -1,0 +1,101 @@
+# Ansible Inventory for Hello World Web Application - Staging Environment
+# Version: 1.0
+# Ansible Version Required: 2.9+
+
+# All staging environment hosts
+all:
+  vars:
+    # Environment identification
+    env: staging
+    staging_domain: staging.example.com
+    
+    # Global feature flags
+    ssl_enabled: true
+    monitoring_enabled: true
+    backup_enabled: true
+
+# Web server group
+web_servers:
+  hosts:
+    staging-web-01:
+      ansible_host: "{{ staging_web_host }}"
+      ansible_user: ubuntu
+      ansible_python_interpreter: /usr/bin/python3
+      ansible_become: true
+      ansible_become_method: sudo
+  vars:
+    # Nginx configuration
+    nginx_config:
+      worker_processes: auto
+      worker_connections: 1024
+      keepalive_timeout: 65
+      client_max_body_size: "1m"
+      server_tokens: "off"
+      gzip: "on"
+      gzip_types:
+        - text/html
+        - text/plain
+      ssl_protocols: "TLSv1.2 TLSv1.3"
+
+    # Security headers configuration
+    security_headers:
+      X-Frame-Options: "DENY"
+      X-Content-Type-Options: "nosniff"
+      Content-Security-Policy: "default-src 'self'"
+      Strict-Transport-Security: "max-age=31536000"
+      Referrer-Policy: "no-referrer"
+
+    # File permissions
+    file_permissions:
+      html_file: "0644"
+      web_root: "0755"
+      log_files: "0640"
+
+    # Rate limiting configuration
+    rate_limiting:
+      enabled: true
+      requests_per_minute: 100
+
+    # Health check configuration
+    health_check:
+      enabled: true
+      interval: 30
+      timeout: 5
+      healthy_threshold: 2
+      unhealthy_threshold: 3
+
+# Monitoring group
+monitoring:
+  hosts:
+    staging-web-01: {}  # Same host as web server for monitoring
+  vars:
+    # CloudWatch monitoring configuration
+    cloudwatch_config:
+      region: "{{ aws_region }}"
+      namespace: "HelloWorld-Staging"
+      metrics_collection_interval: 60
+      metrics:
+        cpu_utilization: true
+        memory_usage: true
+        disk_space: true
+        network_in: true
+        network_out: true
+      logs:
+        nginx_access: "/var/log/nginx/access.log"
+        nginx_error: "/var/log/nginx/error.log"
+      alarms:
+        cpu_high:
+          threshold: 80
+          period: 300
+        memory_high:
+          threshold: 80
+          period: 300
+
+# Group hierarchy and inheritance
+children:
+  web_servers:
+    hosts:
+      staging-web-01: {}
+  monitoring:
+    hosts:
+      staging-web-01: {}
