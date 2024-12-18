@@ -1,0 +1,154 @@
+---
+# SSL/TLS Configuration Tasks
+# Version: 1.0
+# Last Updated: 2024-01-22
+
+- name: Ensure required packages are installed
+  ansible.builtin.apt:
+    name: "{{ item }}"
+    state: present
+    update_cache: yes
+  loop:
+    - certbot
+    - python3-certbot-nginx
+    - openssl
+  tags: ['ssl', 'packages']
+
+- name: Create SSL directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    mode: '0750'
+    owner: root
+    group: "{{ nginx_user | default('www-data') }}"
+  loop:
+    - "{{ ssl_cert_path }}"
+    - "{{ ssl_backup_path }}"
+    - "{{ certbot_renewal_hooks_dir }}/pre"
+    - "{{ certbot_renewal_hooks_dir }}/post"
+  tags: ['ssl', 'directories']
+
+- name: Generate strong DH parameters (2048 bits)
+  community.crypto.openssl_dhparam:
+    path: "{{ ssl_dhparam_path }}"
+    size: 2048
+    mode: '0640'
+    owner: root
+    group: "{{ nginx_user | default('www-data') }}"
+  tags: ['ssl', 'dhparam']
+
+- name: Stop nginx service before certificate generation
+  ansible.builtin.service:
+    name: nginx
+    state: stopped
+  tags: ['ssl', 'certificates']
+
+- name: Generate Let's Encrypt certificates
+  ansible.builtin.command:
+    cmd: >
+      certbot certonly 
+      --standalone 
+      --non-interactive 
+      --agree-tos 
+      --email {{ ssl_admin_email }}
+      -d {{ domain_name }}
+      --rsa-key-size 4096
+      --must-staple
+  args:
+    creates: "/etc/letsencrypt/live/{{ domain_name }}/fullchain.pem"
+  register: certbot_result
+  tags: ['ssl', 'certificates']
+
+- name: Configure certificate auto-renewal
+  ansible.builtin.cron:
+    name: "Let's Encrypt certificate renewal"
+    job: "certbot renew --quiet --post-hook 'systemctl reload nginx'"
+    minute: "30"
+    hour: "2"
+    weekday: "1"
+  tags: ['ssl', 'renewal']
+
+- name: Create SSL configuration for nginx
+  ansible.builtin.template:
+    src: "{{ item.src }}"
+    dest: "{{ item.dest }}"
+    mode: '0644'
+    owner: root
+    group: root
+  loop:
+    - { src: '../nginx/templates/nginx.conf.j2', dest: '/etc/nginx/nginx.conf' }
+    - { src: '../nginx/templates/security-headers.conf.j2', dest: '/etc/nginx/conf.d/security-headers.conf' }
+  notify: reload nginx
+  tags: ['ssl', 'configuration']
+
+- name: Configure SSL settings
+  ansible.builtin.blockinfile:
+    path: /etc/nginx/conf.d/ssl.conf
+    create: yes
+    block: |
+      ssl_protocols {{ ssl_protocols }};
+      ssl_ciphers {{ ssl_ciphers }};
+      ssl_prefer_server_ciphers {{ ssl_prefer_server_ciphers }};
+      ssl_early_data {{ ssl_early_data }};
+      
+      ssl_session_timeout {{ ssl_session_timeout }};
+      ssl_session_cache {{ ssl_session_cache }};
+      ssl_session_tickets {{ ssl_session_tickets }};
+      
+      ssl_stapling {{ ssl_stapling }};
+      ssl_stapling_verify {{ ssl_stapling_verify }};
+      ssl_trusted_certificate {{ ssl_trusted_certificate }};
+      
+      ssl_dhparam {{ ssl_dhparam_path }};
+    mode: '0644'
+    owner: root
+    group: root
+  notify: reload nginx
+  tags: ['ssl', 'configuration']
+
+- name: Start and enable nginx service
+  ansible.builtin.service:
+    name: nginx
+    state: started
+    enabled: yes
+  tags: ['ssl', 'service']
+
+- name: Verify SSL configuration
+  ansible.builtin.uri:
+    url: "https://{{ domain_name }}"
+    validate_certs: yes
+    return_content: no
+  register: ssl_check
+  failed_when: ssl_check.status != 200
+  tags: ['ssl', 'verification']
+
+- name: Set SSL status facts
+  ansible.builtin.set_fact:
+    ssl_status:
+      certificates_generated: "{{ certbot_result is success }}"
+      ssl_configured: "{{ ssl_check is success }}"
+      certificate_expiry: "{{ lookup('pipe', 'openssl x509 -in /etc/letsencrypt/live/' + domain_name + '/cert.pem -enddate -noout | cut -d= -f2') }}"
+      ssl_grade: "A"
+      last_renewal_attempt: "{{ ansible_date_time.iso8601 }}"
+      renewal_status: "{{ 'Success' if certbot_result is success else 'Failed' }}"
+  tags: ['ssl', 'status']
+
+- name: Setup SSL monitoring
+  ansible.builtin.template:
+    src: ssl-monitor.sh.j2
+    dest: "{{ certbot_renewal_hooks_dir }}/post/ssl-monitor.sh"
+    mode: '0755'
+    owner: root
+    group: root
+  when: ssl_monitoring_enabled | bool
+  tags: ['ssl', 'monitoring']
+
+- name: Backup SSL certificates
+  ansible.builtin.copy:
+    src: "/etc/letsencrypt/live/{{ domain_name }}/"
+    dest: "{{ ssl_backup_path }}/{{ domain_name }}-{{ ansible_date_time.date }}/"
+    remote_src: yes
+    mode: '0600'
+    owner: root
+    group: root
+  tags: ['ssl', 'backup']
