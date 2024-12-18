@@ -1,0 +1,156 @@
+# GitHub Actions workflow for PR checks
+# Version: v3
+# Handles HTML validation, tests, and security scanning for pull requests
+
+name: PR Checks
+
+# Trigger on pull requests to main branch
+on:
+  pull_request:
+    branches: [ main ]
+
+# Define permissions
+permissions:
+  contents: read
+  security-events: write
+
+# Global environment variables
+env:
+  NODE_VERSION: '18.x'
+
+jobs:
+  # Job 1: HTML Validation
+  validate_html:
+    name: HTML Validation
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install validation dependencies
+        run: |
+          npm install -g html-validator-cli
+          
+      - name: Run HTML validation
+        id: validate
+        run: |
+          echo "Running W3C HTML validation..."
+          html-validator --file index.html --format json > validation-report.json
+          if [ -s validation-report.json ]; then
+            echo "::error::HTML validation errors found"
+            cat validation-report.json
+            exit 1
+          fi
+
+      - name: Upload validation results
+        if: always()
+        uses: actions/upload-artifact@v3
+        with:
+          name: validation-report
+          path: validation-report.json
+          retention-days: 5
+
+  # Job 2: Automated Tests
+  run_tests:
+    name: Run Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install test dependencies
+        run: |
+          npm install --save-dev jest puppeteer
+          
+      - name: Run browser compatibility tests
+        run: |
+          echo "Testing browser compatibility..."
+          # Run Puppeteer tests for different browser versions
+          npm test
+
+      - name: Generate coverage report
+        run: |
+          npm run test:coverage
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v3
+        with:
+          name: test-reports
+          path: |
+            test-report.json
+            coverage-report.json
+          retention-days: 5
+
+  # Job 3: Security Scanning
+  security_scan:
+    name: Security Analysis
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v2
+        with:
+          languages: javascript
+
+      - name: Run security analysis
+        uses: github/codeql-action/analyze@v2
+        with:
+          category: "/language:javascript"
+
+      - name: Check security headers
+        run: |
+          echo "Validating security headers..."
+          # Custom script to validate required security headers
+          cat index.html | grep -i "content-security-policy\|x-frame-options\|x-content-type-options"
+
+      - name: Upload security results
+        if: always()
+        uses: actions/upload-artifact@v3
+        with:
+          name: security-report
+          path: security-report.sarif
+          retention-days: 5
+
+  # Job 4: Final Check
+  final_check:
+    name: Final Verification
+    needs: [validate_html, run_tests, security_scan]
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Check job status
+        run: |
+          if [ "${{ needs.validate_html.result }}" != "success" ]; then
+            echo "::error::HTML validation failed"
+            exit 1
+          fi
+          if [ "${{ needs.run_tests.result }}" != "success" ]; then
+            echo "::error::Tests failed"
+            exit 1
+          fi
+          if [ "${{ needs.security_scan.result }}" != "success" ]; then
+            echo "::error::Security scan failed"
+            exit 1
+          fi
+          echo "All checks passed successfully!"
