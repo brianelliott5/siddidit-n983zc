@@ -1,0 +1,102 @@
+# Docker Compose configuration for Hello World staging environment
+# Version: 3.8
+# Last Updated: 2024-01-22
+
+version: "3.8"
+
+services:
+  web:
+    build:
+      context: ../../src/web
+      dockerfile: Dockerfile
+      target: staging
+    image: hello-world-web:staging
+    container_name: hello-world-web-staging
+    restart: unless-stopped
+    
+    # Port mapping for HTTP traffic
+    ports:
+      - "80:80"
+    
+    # Mount configuration files and logs
+    volumes:
+      - type: bind
+        source: ../../src/web/config/nginx/nginx.conf
+        target: /etc/nginx/nginx.conf
+        read_only: true
+      - type: bind
+        source: ../../src/web/config/nginx/security-headers.conf
+        target: /etc/nginx/conf.d/security-headers.conf
+        read_only: true
+      - type: volume
+        source: nginx_logs
+        target: /var/log/nginx
+    
+    # Container health monitoring
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost/", "||", "exit", "1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+    
+    # Log rotation configuration
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    
+    # Resource constraints and deployment configuration
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: "512M"
+        reservations:
+          cpus: "0.25"
+          memory: "256M"
+      update_config:
+        parallelism: 1
+        delay: "10s"
+        order: start-first
+        failure_action: rollback
+      rollback_config:
+        parallelism: 1
+        delay: "5s"
+        failure_action: pause
+    
+    # Security configurations
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_BIND_SERVICE
+    read_only: true
+    user: nginx
+    
+    # Network configuration
+    networks:
+      - web_net
+
+# Network definition
+networks:
+  web_net:
+    driver: bridge
+    name: hello-world-staging-net
+    internal: false
+    attachable: true
+    enable_ipv6: false
+    driver_opts:
+      com.docker.network.bridge.name: staging_net
+
+# Volume definition for logs
+volumes:
+  nginx_logs:
+    driver: local
+    name: hello-world-staging-logs
+    driver_opts:
+      type: none
+      device: /var/log/hello-world/staging
+      o: bind
