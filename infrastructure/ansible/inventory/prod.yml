@@ -1,0 +1,103 @@
+# Ansible Production Inventory File
+# Version: 1.0
+# Purpose: Define production environment server groups and configurations for Hello World web application
+# Ansible Version Required: 2.9+
+
+---
+all:
+  vars:
+    # Global variables
+    env: prod
+    aws_region: "{{ aws_region }}"
+    domain_name: "{{ domain_name }}"
+    ssl_enabled: true
+
+  children:
+    webservers:
+      hosts:
+        web01.prod.example.com:
+          ansible_host: "{{ hostvars['web01.prod.example.com'].ansible_host }}"
+      
+      vars:
+        # Server access configuration
+        ansible_user: ubuntu
+        ansible_python_interpreter: /usr/bin/python3
+        ansible_become: true
+        ansible_become_method: sudo
+        ansible_ssh_common_args: -o StrictHostKeyChecking=yes -o UserKnownHostsFile=/etc/ssh/known_hosts
+
+        # Environment identification
+        env: prod
+
+        # Nginx configuration
+        nginx_worker_processes: auto
+        nginx_worker_connections: 1024
+        nginx_keepalive_timeout: 65
+        nginx_client_max_body_size: "1m"
+        
+        # Rate limiting
+        rate_limit_req_zone: "$binary_remote_addr zone=mylimit:10m rate=100r/m"
+        
+        # SSL/TLS configuration
+        ssl_protocols: "TLSv1.2 TLSv1.3"
+        ssl_ciphers: "HIGH:!aNULL:!MD5"
+        
+        # Web server configuration
+        server_port: 80
+        ssl_port: 443
+        health_check_path: "/"
+        max_requests_per_minute: 100
+        
+        # Security headers
+        server_tokens: "off"
+        x_frame_options: "DENY"
+        content_security_policy: "default-src 'self'"
+
+    monitoring:
+      hosts:
+        monitoring01.prod.example.com:
+          ansible_host: "{{ hostvars['monitoring01.prod.example.com'].ansible_host }}"
+      
+      vars:
+        # CloudWatch configuration
+        cloudwatch_enabled: true
+        cloudwatch_region: "{{ aws_region }}"
+        cloudwatch_namespace: "HelloWorld"
+        metrics_collection_interval: 60
+        metrics_namespace: "HelloWorld/Production"
+        
+        # Monitoring settings
+        monitoring_interval: 60
+        health_check_interval: 30
+        log_retention_days: 30
+        
+        # Alert configuration
+        alert_endpoints: 
+          - ops@example.com
+        
+        # Monitoring thresholds
+        alert_thresholds:
+          cpu_utilization: 80
+          memory_utilization: 80
+          error_rate: 0.1
+          response_time: 1000
+          request_count: 1000
+
+  # Common variables for all hosts
+  vars:
+    # Server specifications (based on technical requirements)
+    server_specs:
+      vcpu: 1
+      ram_gb: 1
+      storage_gb: 10
+      network_mbps: 100
+      os: "Ubuntu 22.04 LTS"
+
+    # Monitoring configuration
+    metrics_enabled: true
+    logs_retention_days: 30
+
+    # Common SSH configuration
+    ansible_ssh_common_args: -o StrictHostKeyChecking=yes -o UserKnownHostsFile=/etc/ssh/known_hosts
+    ansible_become: true
+    ansible_become_method: sudo
