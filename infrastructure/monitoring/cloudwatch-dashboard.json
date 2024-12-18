@@ -1,0 +1,173 @@
+{
+  "widgets": [
+    {
+      "type": "metric",
+      "x": 0,
+      "y": 0,
+      "width": 12,
+      "height": 6,
+      "properties": {
+        "title": "Time to First Byte (TTFB)",
+        "view": "timeSeries",
+        "metrics": [
+          ["HelloWorldApp", "TTFB", "Average", 300]
+        ],
+        "region": "${AWS_REGION}",
+        "period": 300,
+        "yAxis": {
+          "left": {
+            "min": 0,
+            "max": 200,
+            "label": "Milliseconds",
+            "showUnits": true
+          }
+        },
+        "annotations": {
+          "horizontal": [
+            {
+              "value": 100,
+              "label": "TTFB Threshold",
+              "color": "#ff0000"
+            }
+          ]
+        },
+        "stat": "Average"
+      }
+    },
+    {
+      "type": "metric",
+      "x": 12,
+      "y": 0,
+      "width": 12,
+      "height": 6,
+      "properties": {
+        "title": "Page Load Time",
+        "view": "timeSeries",
+        "metrics": [
+          ["HelloWorldApp", "PageLoadTime", "Average", 300]
+        ],
+        "region": "${AWS_REGION}",
+        "period": 300,
+        "yAxis": {
+          "left": {
+            "min": 0,
+            "max": 2000,
+            "label": "Milliseconds",
+            "showUnits": true
+          }
+        },
+        "annotations": {
+          "horizontal": [
+            {
+              "value": 1000,
+              "label": "Load Time Threshold",
+              "color": "#ff0000"
+            }
+          ]
+        },
+        "stat": "Average"
+      }
+    },
+    {
+      "type": "metric",
+      "x": 0,
+      "y": 6,
+      "width": 12,
+      "height": 6,
+      "properties": {
+        "title": "Cache Hit Ratio",
+        "view": "timeSeries",
+        "metrics": [
+          ["HelloWorldApp", "CacheHitRatio", "Average", 300]
+        ],
+        "region": "${AWS_REGION}",
+        "period": 300,
+        "yAxis": {
+          "left": {
+            "min": 0,
+            "max": 100,
+            "label": "Percent",
+            "showUnits": true
+          }
+        },
+        "annotations": {
+          "horizontal": [
+            {
+              "value": 90,
+              "label": "Cache Hit Threshold",
+              "color": "#ff0000"
+            }
+          ]
+        },
+        "stat": "Average"
+      }
+    },
+    {
+      "type": "metric",
+      "x": 12,
+      "y": 6,
+      "width": 12,
+      "height": 6,
+      "properties": {
+        "title": "Error Rate",
+        "view": "timeSeries",
+        "metrics": [
+          ["HelloWorldApp", "ErrorRate", "Average", 300]
+        ],
+        "region": "${AWS_REGION}",
+        "period": 300,
+        "yAxis": {
+          "left": {
+            "min": 0,
+            "max": 1,
+            "label": "Percent",
+            "showUnits": true
+          }
+        },
+        "annotations": {
+          "horizontal": [
+            {
+              "value": 0.1,
+              "label": "Error Rate Threshold",
+              "color": "#ff0000"
+            }
+          ]
+        },
+        "stat": "Average"
+      }
+    },
+    {
+      "type": "metric",
+      "x": 0,
+      "y": 12,
+      "width": 24,
+      "height": 6,
+      "properties": {
+        "title": "HTTP 5xx Errors",
+        "view": "timeSeries",
+        "metrics": [
+          ["HelloWorldApp", "5XX", "Sum", 300]
+        ],
+        "region": "${AWS_REGION}",
+        "period": 300,
+        "yAxis": {
+          "left": {
+            "min": 0,
+            "label": "Count",
+            "showUnits": true
+          }
+        },
+        "annotations": {
+          "horizontal": [
+            {
+              "value": 1,
+              "label": "Error Count Threshold",
+              "color": "#ff0000"
+            }
+          ]
+        },
+        "stat": "Sum"
+      }
+    }
+  ]
+}
