@@ -1,0 +1,101 @@
+# Docker Compose file format specification for modern container orchestration features
+# IE2: docker/compose v3.8
+version: "3.8"
+
+services:
+  web:
+    build:
+      context: ../../src/web
+      dockerfile: Dockerfile
+    image: hello-world-web:prod
+    container_name: hello-world-web-prod
+    restart: unless-stopped
+    
+    # Port mapping for HTTP traffic
+    ports:
+      - "80:80"
+    
+    # Mount configuration and log volumes
+    volumes:
+      - type: bind
+        source: ../../src/web/config/nginx/nginx.conf
+        target: /etc/nginx/nginx.conf
+        read_only: true
+      - type: bind
+        source: ../../src/web/config/security-headers.conf
+        target: /etc/nginx/conf.d/security-headers.conf
+        read_only: true
+      - type: volume
+        source: nginx_logs
+        target: /var/log/nginx
+    
+    # Health check configuration
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost/", "||", "exit", "1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+    
+    # Resource constraints
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 1G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+      update_config:
+        parallelism: 1
+        delay: 10s
+        order: start-first
+        failure_action: rollback
+      rollback_config:
+        parallelism: 1
+        delay: 5s
+        failure_action: pause
+    
+    # Security settings
+    security_opt:
+      - no-new-privileges:true
+      - seccomp=unconfined
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_BIND_SERVICE
+    read_only: true
+    user: nginx
+    
+    # Logging configuration
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    
+    # Network configuration
+    networks:
+      - web_net
+
+# Network definitions
+networks:
+  web_net:
+    driver: bridge
+    name: hello-world-prod-net
+    driver_opts:
+      com.docker.network.bridge.name: hello-world-prod
+    ipam:
+      driver: default
+      config:
+        - subnet: 172.20.0.0/16
+    
+# Volume definitions
+volumes:
+  nginx_logs:
+    driver: local
+    name: hello-world-prod-logs
+    driver_opts:
+      type: none
+      device: /var/log/hello-world
+      o: bind
