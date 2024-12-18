@@ -1,0 +1,28 @@
+node_modules/*
+
+# Build output
+dist/*
+
+# Test coverage reports
+coverage/*
+
+# JavaScript files (TypeScript only project)
+*.js
+
+# TypeScript declaration files
+*.d.ts
+
+# Test configuration
+jest.config.ts
+
+# Static assets
+public/*
+
+# Configuration files
+config/*
+
+# Build and deployment scripts
+scripts/*
+
+# Documentation
+docs/*
