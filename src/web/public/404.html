@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>404 - Page Not Found</title>
+    <!-- Ensure no caching for error pages -->
+    <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <style>
+        /* Minimal styling for centered layout while maintaining system defaults */
+        body {
+            min-height: 100vh;
+            margin: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        main {
+            text-align: center;
+            padding: 1rem;
+            max-width: 600px;
+            margin: auto;
+        }
+        /* Ensure adequate spacing between elements */
+        h1 {
+            margin-bottom: 1rem;
+        }
+        /* Maintain readability with system fonts */
+        body {
+            font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', 
+                         Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 
+                         'Helvetica Neue', sans-serif;
+        }
+    </style>
+</head>
+<body>
+    <!-- Main content with ARIA attributes for accessibility -->
+    <main role="alert" aria-live="polite">
+        <h1>404 - Page Not Found</h1>
+        <p>The requested page could not be found on this server.</p>
+    </main>
+</body>
+</html>
