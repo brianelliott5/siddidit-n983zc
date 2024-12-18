@@ -1,0 +1,57 @@
+# Security Headers Configuration
+# Nginx Version: 1.18+
+# Last Updated: 2024-01-22
+
+# Content Security Policy (CSP)
+# Controls which resources the browser is allowed to load
+add_header Content-Security-Policy "{{ nginx_csp_policy | default('default-src \'self\'') }}" always;
+
+# X-Frame-Options
+# Prevents clickjacking attacks by controlling frame embedding
+add_header X-Frame-Options "{{ nginx_frame_options | default('DENY') }}" always;
+
+# X-Content-Type-Options
+# Prevents MIME-type sniffing security vulnerabilities
+add_header X-Content-Type-Options "{{ nginx_content_type_options | default('nosniff') }}" always;
+
+# HTTP Strict Transport Security (HSTS)
+# Enforces HTTPS usage with subdomain protection and preload capability
+add_header Strict-Transport-Security "max-age={{ nginx_hsts_max_age | default('31536000') }}; includeSubDomains; preload" always;
+
+# Referrer Policy
+# Controls how much referrer information should be included with requests
+add_header Referrer-Policy "{{ nginx_referrer_policy | default('no-referrer') }}" always;
+
+# Additional Security Headers
+# Permissions Policy to control browser features
+add_header Permissions-Policy "geolocation=(), microphone=(), camera=()" always;
+
+# Cross-Origin Resource Policy
+# Controls how resources can be shared across origins
+add_header Cross-Origin-Resource-Policy "same-origin" always;
+
+# Cross-Origin Opener Policy
+# Controls how windows/tabs interact with each other
+add_header Cross-Origin-Opener-Policy "same-origin" always;
+
+# Cross-Origin Embedder Policy
+# Controls which resources can be loaded cross-origin
+add_header Cross-Origin-Embedder-Policy "require-corp" always;
+
+# Remove Server Header
+# Hides server information from responses
+more_clear_headers Server;
+
+# Remove X-Powered-By Header
+# Hides technology information from responses
+more_clear_headers X-Powered-By;
+
+# Cache Control
+# Ensures sensitive headers are not cached
+add_header Cache-Control "no-store, no-cache, must-revalidate, proxy-revalidate" always;
+add_header Pragma "no-cache" always;
+add_header Expires "0" always;
+
+# Feature Policy
+# Explicitly controls which browser features are available
+add_header Feature-Policy "accelerometer 'none'; camera 'none'; geolocation 'none'; gyroscope 'none'; magnetometer 'none'; microphone 'none'; payment 'none'; usb 'none'" always;
