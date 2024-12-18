@@ -1,0 +1,163 @@
+{
+  "global_settings": {
+    "default_period": 300,
+    "default_evaluation_periods": 2,
+    "default_datapoints_to_alarm": 2,
+    "default_treat_missing_data": "notBreaching",
+    "tags": {
+      "Environment": "${ENV}",
+      "Application": "HelloWorld",
+      "ManagedBy": "Terraform", 
+      "CostCenter": "WebOperations"
+    }
+  },
+  "alarms": [
+    {
+      "name": "TimeToFirstByte",
+      "metric_name": "TTFB",
+      "namespace": "WebApplication",
+      "comparison_operator": "GreaterThanThreshold",
+      "evaluation_periods": 2,
+      "period": 300,
+      "statistic": "Average",
+      "threshold": 100,
+      "unit": "Milliseconds",
+      "alarm_description": "Alert when Time to First Byte exceeds 100ms for 2 consecutive periods",
+      "alarm_actions": ["${SNS_TOPIC_ARN}"],
+      "ok_actions": ["${SNS_TOPIC_ARN}"],
+      "insufficient_data_actions": ["${SNS_TOPIC_ARN}"],
+      "treat_missing_data": "notBreaching",
+      "datapoints_to_alarm": 2,
+      "evaluate_low_sample_count_percentile": "ignore",
+      "dimensions": [
+        {
+          "Name": "EndpointUrl",
+          "Value": "${ENDPOINT_URL}"
+        }
+      ]
+    },
+    {
+      "name": "PageLoadTime",
+      "metric_name": "PageLoadTime", 
+      "namespace": "WebApplication",
+      "comparison_operator": "GreaterThanThreshold",
+      "evaluation_periods": 2,
+      "period": 300,
+      "statistic": "Average",
+      "threshold": 1000,
+      "unit": "Milliseconds",
+      "alarm_description": "Alert when Page Load Time exceeds 1 second for 2 consecutive periods",
+      "alarm_actions": ["${SNS_TOPIC_ARN}"],
+      "ok_actions": ["${SNS_TOPIC_ARN}"],
+      "insufficient_data_actions": ["${SNS_TOPIC_ARN}"],
+      "treat_missing_data": "notBreaching",
+      "datapoints_to_alarm": 2,
+      "evaluate_low_sample_count_percentile": "ignore",
+      "dimensions": [
+        {
+          "Name": "EndpointUrl",
+          "Value": "${ENDPOINT_URL}"
+        }
+      ]
+    },
+    {
+      "name": "CacheHitRatio",
+      "metric_name": "CacheHitRatio",
+      "namespace": "WebApplication", 
+      "comparison_operator": "LessThanThreshold",
+      "evaluation_periods": 3,
+      "period": 300,
+      "statistic": "Average",
+      "threshold": 90,
+      "unit": "Percent",
+      "alarm_description": "Alert when Cache Hit Ratio falls below 90% for 3 consecutive periods",
+      "alarm_actions": ["${SNS_TOPIC_ARN}"],
+      "ok_actions": ["${SNS_TOPIC_ARN}"],
+      "insufficient_data_actions": ["${SNS_TOPIC_ARN}"],
+      "treat_missing_data": "notBreaching",
+      "datapoints_to_alarm": 3,
+      "evaluate_low_sample_count_percentile": "ignore",
+      "dimensions": [
+        {
+          "Name": "CacheId",
+          "Value": "${CACHE_ID}"
+        }
+      ]
+    },
+    {
+      "name": "ErrorRate",
+      "metric_name": "ErrorRate",
+      "namespace": "WebApplication",
+      "comparison_operator": "GreaterThanThreshold", 
+      "evaluation_periods": 2,
+      "period": 300,
+      "statistic": "Average",
+      "threshold": 0.1,
+      "unit": "Percent",
+      "alarm_description": "Alert when Error Rate exceeds 0.1% for 2 consecutive periods",
+      "alarm_actions": ["${SNS_TOPIC_ARN}"],
+      "ok_actions": ["${SNS_TOPIC_ARN}"],
+      "insufficient_data_actions": ["${SNS_TOPIC_ARN}"],
+      "treat_missing_data": "notBreaching",
+      "datapoints_to_alarm": 2,
+      "evaluate_low_sample_count_percentile": "ignore",
+      "dimensions": [
+        {
+          "Name": "EndpointUrl",
+          "Value": "${ENDPOINT_URL}"
+        }
+      ]
+    },
+    {
+      "name": "HTTP5xxErrors",
+      "metric_name": "5XX",
+      "namespace": "WebApplication",
+      "comparison_operator": "GreaterThanThreshold",
+      "evaluation_periods": 1,
+      "period": 300,
+      "statistic": "Sum",
+      "threshold": 1,
+      "unit": "Count",
+      "alarm_description": "Alert when any HTTP 5xx errors occur within 5 minutes",
+      "alarm_actions": ["${SNS_TOPIC_ARN}"],
+      "ok_actions": ["${SNS_TOPIC_ARN}"],
+      "insufficient_data_actions": ["${SNS_TOPIC_ARN}"],
+      "treat_missing_data": "notBreaching",
+      "datapoints_to_alarm": 1,
+      "evaluate_low_sample_count_percentile": "ignore",
+      "dimensions": [
+        {
+          "Name": "EndpointUrl",
+          "Value": "${ENDPOINT_URL}"
+        }
+      ]
+    }
+  ],
+  "validation_rules": [
+    {
+      "rule": "All alarms must have valid comparison operators",
+      "severity": "error",
+      "validation_regex": "^(GreaterThanThreshold|LessThanThreshold|GreaterThanOrEqualToThreshold|LessThanOrEqualToThreshold)$"
+    },
+    {
+      "rule": "All alarms must have valid statistics",
+      "severity": "error",
+      "allowed_values": ["Average", "Sum", "Min", "Max", "SampleCount", "p90", "p95", "p99"]
+    },
+    {
+      "rule": "All alarms must have valid periods",
+      "severity": "error",
+      "allowed_values": [60, 300, 3600]
+    },
+    {
+      "rule": "All thresholds must match technical specifications",
+      "severity": "error",
+      "validation_map": {
+        "TimeToFirstByte": {"max": 100},
+        "PageLoadTime": {"max": 1000},
+        "CacheHitRatio": {"min": 90},
+        "ErrorRate": {"max": 0.1}
+      }
+    }
+  ]
+}
